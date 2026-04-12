@@ -1,0 +1,16 @@
+{
+  "features": [
+    "die_matrix",
+    "lifetime_2nd_strike_s",
+    "oee_cycle_time_s"
+  ],
+  "target": "lifetime_bath_s",
+  "metrics": {
+    "rmse": 1.8543146732292406,
+    "mae": 0.9372334872654133,
+    "r2": 0.6622705847607939
+  },
+  "train_size": 112323,
+  "test_size": 28081,
+  "xgboost_version": "1.7.6"
+}

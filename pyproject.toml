@@ -15,7 +15,7 @@ dependencies = [
     "scikit-learn",
     "sqlalchemy",
     "streamlit>=1.40",
-    "xgboost",
+    "xgboost>=1.7,<2.0",
 ]
 
 [project.scripts]
