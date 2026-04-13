@@ -1,9 +1,24 @@
-# TODO: Write a Dockerfile that packages the Streamlit app
-#
-# Requirements:
-# - Base image: python:3.13-slim
-# - Install uv from ghcr.io/astral-sh/uv:latest
-# - Copy dependency files and install with uv sync
-# - Copy only: app/, src/, models/, data/gold/
-# - Expose port 8501
-# - CMD: run streamlit on 0.0.0.0:8501
+# Forge Line Streamlit app container
+FROM python:3.13-slim
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Copy dependency files and source package for build
+COPY pyproject.toml uv.lock README.md ./
+COPY src/ src/
+
+# Install dependencies (includes local package)
+ENV UV_SYSTEM_PYTHON=1
+RUN uv sync --frozen --no-dev
+
+# Copy only required app code and assets
+COPY app/ app/
+COPY models/ models/
+COPY data/gold/ data/gold/
+
+EXPOSE 8501
+
+CMD ["uv", "run", "streamlit", "run", "app/streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501"]
