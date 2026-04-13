@@ -16,7 +16,9 @@ dependencies = [
     "sqlalchemy",
     "streamlit>=1.40",
     "xgboost>=1.7,<2.0",
+    "sagemaker>=2.200",
 ]
+
 
 [project.scripts]
 lab = "vaultech_analysis.start_lab:main"
