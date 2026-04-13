@@ -4151,11 +4151,15 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pyarrow" },
     { name = "pytest" },
-    { name = "sagemaker" },
     { name = "scikit-learn" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
     { name = "xgboost" },
+]
+
+[package.optional-dependencies]
+deploy = [
+    { name = "sagemaker" },
 ]
 
 [package.dev-dependencies]
@@ -4172,12 +4176,13 @@ requires-dist = [
     { name = "psycopg2-binary" },
     { name = "pyarrow" },
     { name = "pytest" },
-    { name = "sagemaker", specifier = ">=2.200" },
+    { name = "sagemaker", marker = "extra == 'deploy'", specifier = ">=2.200" },
     { name = "scikit-learn" },
     { name = "sqlalchemy" },
     { name = "streamlit", specifier = ">=1.40" },
     { name = "xgboost", specifier = ">=1.7,<2.0" },
 ]
+provides-extras = ["deploy"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest-playwright", specifier = ">=0.7.2" }]

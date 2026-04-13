@@ -14,9 +14,12 @@ Usage as module (for Streamlit):
 
 import argparse
 import json
+import os
+import time
 from pathlib import Path
 
 import pandas as pd
+import boto3
 from xgboost import XGBRegressor
 
 
@@ -31,16 +34,33 @@ class Predictor:
         model_path = model_dir / "xgboost_bath_predictor.json"
         metadata_path = model_dir / "model_metadata.json"
 
-        # Load model
-        self.model = XGBRegressor()
-        self.model.load_model(str(model_path))
+        self.model_dir = model_dir
+        self.gold_file = gold_file
 
-        # Load metadata
-        self.metadata = json.loads(metadata_path.read_text())
-        self.features = self.metadata["features"]
-        self.metrics = self.metadata["metrics"]
+        # SageMaker endpoint config (optional)
+        self.endpoint_name = os.environ.get("SAGEMAKER_ENDPOINT_NAME")
+        self.runtime = boto3.client("sagemaker-runtime") if self.endpoint_name else None
 
-        # Load gold to get valid matrices + OEE median
+        # Load metadata (if available). For SageMaker-only mode, fall back to defaults.
+        if metadata_path.exists():
+            self.metadata = json.loads(metadata_path.read_text())
+            self.features = self.metadata["features"]
+            self.metrics = self.metadata["metrics"]
+        else:
+            self.metadata = {
+                "features": ["die_matrix", "lifetime_2nd_strike_s", "oee_cycle_time_s"],
+                "metrics": {},
+            }
+            self.features = self.metadata["features"]
+            self.metrics = self.metadata["metrics"]
+
+        # Load model (local fallback) if available
+        self.model = None
+        if model_path.exists():
+            self.model = XGBRegressor()
+            self.model.load_model(str(model_path))
+
+        # Load gold for valid matrices + OEE median
         gold = pd.read_parquet(gold_file)
         self.die_matrices = sorted(gold["die_matrix"].dropna().astype(int).unique().tolist())
         self.oee_median = gold["oee_cycle_time_s"].dropna().median()
@@ -69,6 +89,30 @@ class Predictor:
             "lifetime_2nd_strike_s": lifetime_2nd_strike_s,
             "oee_cycle_time_s": oee_used,
         }])[self.features]
+
+        if self.endpoint_name:
+            payload = X.to_csv(index=False, header=False)
+            response = self.runtime.invoke_endpoint(
+                EndpointName=self.endpoint_name,
+                ContentType="text/csv",
+                Body=payload,
+            )
+            pred = float(response["Body"].read().decode().strip())
+            return {
+                "predicted_bath_time_s": pred,
+                "die_matrix": die_matrix,
+                "lifetime_2nd_strike_s": lifetime_2nd_strike_s,
+                "oee_cycle_time_s": oee_used,
+                "model_metrics": self.metrics,
+                "debug": {
+                    "source": "sagemaker",
+                    "endpoint": self.endpoint_name,
+                    "prediction": pred,
+                },
+            }
+
+        if self.model is None:
+            return {"error": "Local model not available and SageMaker endpoint not configured."}
 
         pred = float(self.model.predict(X)[0])
 

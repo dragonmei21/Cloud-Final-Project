@@ -16,7 +16,6 @@ RUN uv sync --frozen --no-dev
 
 # Copy only required app code and assets
 COPY app/ app/
-COPY models/ models/
 COPY data/gold/ data/gold/
 
 EXPOSE 8501

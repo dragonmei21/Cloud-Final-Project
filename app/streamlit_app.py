@@ -70,8 +70,15 @@ def load_data():
         df["partial_aux_to_bath_s"] = df["lifetime_bath_s"] - df["lifetime_auxiliary_press_s"]
 
     predictor = load_predictor()
-    df["predicted_bath_s"] = predictor.predict_batch(df)
-    df["prediction_error_s"] = df["predicted_bath_s"] - df["lifetime_bath_s"]
+
+    # If SageMaker endpoint is configured, avoid full-batch remote inference here.
+    # We'll do on-demand prediction in the detail panel.
+    if predictor.endpoint_name:
+        df["predicted_bath_s"] = pd.NA
+        df["prediction_error_s"] = pd.NA
+    else:
+        df["predicted_bath_s"] = predictor.predict_batch(df)
+        df["prediction_error_s"] = df["predicted_bath_s"] - df["lifetime_bath_s"]
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df
 
@@ -115,8 +122,8 @@ mae = (filtered["prediction_error_s"].abs()).median()
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Pieces", f"{total_pieces:,}")
 c2.metric("Median bath (s)", f"{median_bath:.2f}")
-c3.metric("Median predicted (s)", f"{median_pred:.2f}")
-c4.metric("Median abs error (s)", f"{mae:.2f}")
+c3.metric("Median predicted (s)", "N/A" if pd.isna(median_pred) else f"{median_pred:.2f}")
+c4.metric("Median abs error (s)", "N/A" if pd.isna(mae) else f"{mae:.2f}")
 
 table_cols = [
     "timestamp", "piece_id", "die_matrix",
@@ -174,6 +181,19 @@ if selected_idx is not None:
     st.markdown("**Actual vs Reference Partial Times**")
     chart_df = part_df.set_index("Segment")[["Actual", "Reference"]]
     st.bar_chart(chart_df)
+
+    # Inference debug panel (SageMaker)
+    st.markdown("**Inference Debug (SageMaker)**")
+    predictor = load_predictor()
+    debug_result = predictor.predict(
+        die_matrix=int(selected_row["die_matrix"]),
+        lifetime_2nd_strike_s=float(selected_row["lifetime_2nd_strike_s"]),
+        oee_cycle_time_s=None if pd.isna(selected_row["oee_cycle_time_s"]) else float(selected_row["oee_cycle_time_s"]),
+    )
+    debug = debug_result.get("debug")
+    if debug:
+        st.json(debug)
+    else:
+        st.info("SageMaker endpoint not configured; using local model.")
 else:
     st.info("Select a piece from the table above to see its per-stage timing detail.")
-
