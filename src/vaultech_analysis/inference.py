@@ -28,9 +28,23 @@ class Predictor:
     """Loads the trained model and provides predictions."""
 
     def __init__(self, model_dir: Path = MODEL_DIR, gold_file: Path = GOLD_FILE):
-        # TODO: load the XGBoost model from model_dir
-        # TODO: load model metadata (features, metrics, die_matrices)
-        # TODO: load reference medians per die matrix from gold_file
+        model_path = model_dir / "xgboost_bath_predictor.json"
+        metadata_path = model_dir / "model_metadata.json"
+
+        # Load model
+        self.model = XGBRegressor()
+        self.model.load_model(str(model_path))
+
+        # Load metadata
+        self.metadata = json.loads(metadata_path.read_text())
+        self.features = self.metadata["features"]
+        self.metrics = self.metadata["metrics"]
+
+        # Load gold to get valid matrices + OEE median
+        gold = pd.read_parquet(gold_file)
+        self.die_matrices = sorted(gold["die_matrix"].dropna().astype(int).unique().tolist())
+        self.oee_median = gold["oee_cycle_time_s"].dropna().median()
+
         pass
 
     def predict(
@@ -45,23 +59,59 @@ class Predictor:
         Returns {"error": "..."} for unknown die_matrix values.
         Missing oee_cycle_time_s should default to the median (~13.8s).
         """
-        # TODO: implement
-        raise NotImplementedError
+        if die_matrix not in self.die_matrices:
+            return {"error": f"Unknown die_matrix: {die_matrix}"}
+
+        oee_used = self.oee_median if oee_cycle_time_s is None else oee_cycle_time_s
+
+        X = pd.DataFrame([{
+            "die_matrix": die_matrix,
+            "lifetime_2nd_strike_s": lifetime_2nd_strike_s,
+            "oee_cycle_time_s": oee_used,
+        }])[self.features]
+
+        pred = float(self.model.predict(X)[0])
+
+        return {
+            "predicted_bath_time_s": pred,
+            "die_matrix": die_matrix,
+            "lifetime_2nd_strike_s": lifetime_2nd_strike_s,
+            "oee_cycle_time_s": oee_cycle_time_s,
+            "model_metrics": self.metrics,
+        }
+
+        
 
     def predict_batch(self, df: pd.DataFrame) -> pd.Series:
         """Predict bath time for a DataFrame of pieces.
 
         Handle missing oee_cycle_time_s by filling with the median.
         """
-        # TODO: implement
-        raise NotImplementedError
+        df = df.copy()
+        df["oee_cycle_time_s"] = df["oee_cycle_time_s"].fillna(self.oee_median)
+
+        X = df[self.features]
+        preds = self.model.predict(X)
+        return pd.Series(preds, index=df.index)
+
+       
 
 
 def main():
-    # TODO: implement CLI entry point
-    # Parse args: --die-matrix, --strike2, --oee (optional)
-    # Create Predictor, call predict(), print JSON result
-    raise NotImplementedError
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--die-matrix", type=int, required=True)
+    parser.add_argument("--strike2", type=float, required=True)
+    parser.add_argument("--oee", type=float, required=False, default=None)
+    args = parser.parse_args()
+
+    predictor = Predictor()
+    result = predictor.predict(
+        die_matrix=args.die_matrix,
+        lifetime_2nd_strike_s=args.strike2,
+        oee_cycle_time_s=args.oee,
+    )
+    print(json.dumps(result, indent=2))
+
 
 
 if __name__ == "__main__":
